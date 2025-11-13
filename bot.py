@@ -9,6 +9,7 @@ from telegram.ext import Application
 from PIL import Image
 import aiohttp
 import ssl
+import os
 import certifi
 import requests
 import re
@@ -1309,7 +1310,9 @@ async def main_async():
     try:
         # Тут має бути код з вашої функції main_with_restart()
         # але переписаний в асинхронному стилі
-        application = Application.builder().token(BOT_TOKEN).build()
+        BOT_TOKEN = os.environ.get('BOT_TOKEN')
+        if not BOT_TOKEN:
+    raise ValueError("❌ BOT_TOKEN не встановлено в змінних середовища"
         # Додайте ваші обробники...
         await application.run_polling()
     except Exception as e:
