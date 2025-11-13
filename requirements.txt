@@ -4,6 +4,6 @@ requests
 playwright
 beautifulsoup4
 aiohttp
-certifi
-urllib3
+selenium
 webdriver-manager
+urllib3
