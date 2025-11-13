@@ -5,6 +5,7 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 )
 from telegram import InputMediaPhoto
+from telegram.ext import Application
 from PIL import Image
 import aiohttp
 import ssl
