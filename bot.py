@@ -1312,7 +1312,7 @@ async def main_async():
         # але переписаний в асинхронному стилі
         BOT_TOKEN = os.environ.get('BOT_TOKEN')
         if not BOT_TOKEN:
-    raise ValueError("❌ BOT_TOKEN не встановлено в змінних середовища"
+            raise ValueError("❌ BOT_TOKEN не встановлено в змінних середовища"
         # Додайте ваші обробники...
         await application.run_polling()
     except Exception as e:
