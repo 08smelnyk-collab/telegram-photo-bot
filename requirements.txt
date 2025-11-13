@@ -1,7 +1,6 @@
 python-telegram-bot
 pillow
 requests
-playwright
 beautifulsoup4
 aiohttp
 selenium
