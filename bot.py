@@ -32,7 +32,10 @@ import hashlib
 import os
 
 # === 🔑 TOKEN ===
-TOKEN = "8132761969:AAFqXsZbZRPd7gpJaTkyAA_Ep8VJKOMSay0"
+# === 🔑 TOKEN ===
+BOT_TOKEN = os.environ.get('BOT_TOKEN')
+if not BOT_TOKEN:
+    raise ValueError("❌ BOT_TOKEN не встановлено в змінних середовища")
 
 # === ⚙️ SETTINGS ===
 PHOTOS_PER_ALBUM = 10
