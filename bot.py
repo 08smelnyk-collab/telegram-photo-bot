@@ -1306,10 +1306,17 @@ def main_with_restart():
 async def main_async():
     """Асинхронна версія main_with_restart"""
     try:
-        await main_with_restart()
+        # Тут має бути код з вашої функції main_with_restart()
+        # але переписаний в асинхронному стилі
+        application = Application.builder().token(BOT_TOKEN).build()
+        # Додайте ваші обробники...
+        await application.run_polling()
     except Exception as e:
         print(f"❌ Помилка в main_async: {e}")
         logging.exception("Помилка в головній функції")
+        # Можна додати перезапуск тут, якщо потрібно
+        await asyncio.sleep(10)
+        await main_async()  # Перезапуск
 
 if __name__ == "__main__":
     try:
