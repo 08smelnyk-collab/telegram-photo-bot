@@ -2,10 +2,9 @@ import logging
 from io import BytesIO
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+    ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, Application
 )
 from telegram import InputMediaPhoto
-from telegram.ext import Application
 from PIL import Image
 import aiohttp
 import ssl
@@ -19,14 +18,16 @@ from urllib.parse import urljoin, unquote, urlparse
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
+from selenium.common.exceptions import TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
 import base64
 import time
 import hashlib
-import os
-
-# === 🔑 TOKEN ===
-TOKEN = "8132761969:AAFqXsZbZRPd7gpJaTkyAA_Ep8VJKOMSay0"
 
 # === ⚙️ SETTINGS ===
 PHOTOS_PER_ALBUM = 10
@@ -36,7 +37,7 @@ MIN_HEIGHT = 300
 
 # === 🔐 ACCESS CONTROL ===
 # Твій ID (заміни на свій реальний ID)
-ADMIN_ID = 723935749 # ЗАМІНИ ЦЕ НА СВІЙ ID!
+ADMIN_ID = 723935749  # ЗАМІНИ ЦЕ НА СВІЙ ID!
 
 # Словник дозволених користувачів {user_id: username}
 ALLOWED_USERS = {
@@ -132,60 +133,33 @@ class FixedGalleryExtractor:
         ]
         
     def setup_driver(self):
-        """Налаштовує Chrome WebDriver (локальна версія)"""
-        chrome_options = Options()
-    
-        # Опції для локального середовища
-        options = Options()
-        options.add_argument('--headless')  # Без графічного інтерфейсу
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.binary_location = "/usr/bin/chromium"  # Шлях до Chromium
-
-    
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-    
+        """Налаштовує Chrome WebDriver"""
         try:
-            # Спроба з webdriver-manager (автоматичне встановлення)
-            from webdriver_manager.chrome import ChromeDriverManager
-            from selenium.webdriver.chrome.service import Service as ChromeService
-        
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=options)
-            logger.info("✅ ChromeDriver успішно ініціалізовано через WebDriver Manager")
-            return driver
-        
-        except Exception as e:
-            logger.error(f"❌ Помилка з WebDriver Manager: {e}")
-        
-            # Спроба без service (автоматичний пошук)
-        try:
-            driver = webdriver.Chrome(options=chrome_options)
-            logger.info("✅ Chrome успішно ініціалізовано (автоматичний пошук)")
-            return driver
-        except Exception as e2:
-            logger.error(f"❌ Критична помилка: {e2}")
+            options = Options()
+            options.add_argument('--headless')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--remote-debugging-port=9222')
+            options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             
-            # Остання спроба - спрощена версія
+            # Спроба з webdriver-manager
             try:
-                chrome_options.add_argument("--headless")
-                driver = webdriver.Chrome(options=chrome_options)
-                logger.info("✅ Chrome успішно ініціалізовано (спрощена версія)")
+                service = Service(ChromeDriverManager().install())
+                driver = webdriver.Chrome(service=service, options=options)
+                logger.info("✅ ChromeDriver успішно ініціалізовано")
                 return driver
-            except Exception as e3:
-                logger.critical(f"💥 Всі спроби невдалі: {e3}")
-                logger.info("🔄 Спроба запустити без headless режиму...")
+            except Exception as e:
+                logger.error(f"❌ Помилка з WebDriver Manager: {e}")
                 
-                try:
-                    # Спроба без headless
-                    chrome_options = Options()
-                    chrome_options.add_argument("--window-size=1920,1080")
-                    driver = webdriver.Chrome(options=chrome_options)
-                    logger.info("✅ Chrome успішно ініціалізовано (без headless)")
-                    return driver
-                except Exception as e4:
-                    logger.critical(f"💥 Не вдалося запустити Chrome: {e4}")
-                    return None
+                # Спроба без service
+                driver = webdriver.Chrome(options=options)
+                logger.info("✅ Chrome успішно ініціалізовано")
+                return driver
+                
+        except Exception as e:
+            logger.error(f"❌ Критична помилка ініціалізації Chrome: {e}")
+            return None
 
     def remove_watermark(self, image):
         """Видаляє водяний знак (тільки для Otodom)"""
@@ -1242,13 +1216,19 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Помилка: {context.error}")
 
-def main():
+async def main_async():
+    """Асинхронна версія головної функції"""
     try:
+        # Отримуємо токен з змінних середовища
+        BOT_TOKEN = os.environ.get('BOT_TOKEN')
+        if not BOT_TOKEN:
+            raise ValueError("❌ BOT_TOKEN не встановлено в змінних середовища")
+        
         # Чекаємо на інтернет-з'єднання
         print("🔍 Перевірка інтернет-з'єднання...")
         while not check_internet_connection():
             print("❌ Немає інтернет-з'єднання, очікую 30 секунд...")
-            time.sleep(30)
+            await asyncio.sleep(30)
         
         print("✅ Інтернет-з'єднання активне")
         
@@ -1262,7 +1242,7 @@ def main():
         print(f"👑 Адміністратор: {ADMIN_ID}")
         print(f"👥 Дозволені користувачі: {len(ALLOWED_USERS)}")
         
-        application = ApplicationBuilder().token(TOKEN).build()
+        application = Application.builder().token(BOT_TOKEN).build()
         
         # Додаємо обробники команд
         application.add_handler(CommandHandler("start", start))
@@ -1279,57 +1259,16 @@ def main():
         application.add_error_handler(error_handler)
         
         print("💫 Бот працює...")
-        application.run_polling()
+        await application.run_polling()
         
     except Exception as e:
         logger.critical(f"❌ Помилка запуску: {e}")
-        raise  # Передаємо помилку для перезапуску
+        raise
 
-def main_with_restart():
-    """Основна функція з автоматичним перезапуском"""
-    max_restarts = 10
-    restart_count = 0
-    restart_delay = 60  # секунд
-    
-    while restart_count < max_restarts:
-        try:
-            print(f"🚀 Запуск бота (спроба {restart_count + 1}/{max_restarts})")
-            main()
-        except Exception as e:
-            print(f"❌ Бот впав: {e}")
-            restart_count += 1
-            if restart_count < max_restarts:
-                print(f"🔄 Перезапуск через {restart_delay} секунд...")
-                time.sleep(restart_delay)
-            else:
-                print("❌ Досягнуто максимальну кількість перезапусків")
-                break
-
- async def main_async():
-     """Асинхронна версія main_with_restart"""
-     try:
-         # Отримуємо токен з змінних середовища
-         BOT_TOKEN = os.environ.get('BOT_TOKEN')
-         if not BOT_TOKEN:
-            raise ValueError("❌ BOT_TOKEN не встановлено в змінних середовища")
-        
-         application = Application.builder().token(BOT_TOKEN).build()
-        
-         # Додайте ваші обробники тут...
-         # application.add_handler(CommandHandler("start", start))
-         # application.add_handler(MessageHandler(filters.TEXT, handle_message))
-        
-         print("🤖 Бот запускається...")
-         await application.run_polling()
-        
-     except Exception as e:
-         print(f"❌ Помилка в main_async: {e}")
-         logging.exception("Помилка в головній функції")
-
- if __name__ == "__main__":
-     try:
-         asyncio.run(main_async())
-     except KeyboardInterrupt:
-         print("⏹️ Бот зупинений користувачем")
-     except Exception as e:
-         print(f"💥 Непередбачена помилка: {e}")
+if __name__ == "__main__":
+    try:
+        asyncio.run(main_async())
+    except KeyboardInterrupt:
+        print("⏹️ Бот зупинений користувачем")
+    except Exception as e:
+        print(f"💥 Непередбачена помилка: {e}")
