@@ -1305,31 +1305,31 @@ def main_with_restart():
                 print("❌ Досягнуто максимальну кількість перезапусків")
                 break
 
-async def main_async():
-    """Асинхронна версія main_with_restart"""
-    try:
-        # Отримуємо токен з змінних середовища
-        BOT_TOKEN = os.environ.get('BOT_TOKEN')
-        if not BOT_TOKEN:
+ async def main_async():
+     """Асинхронна версія main_with_restart"""
+     try:
+         # Отримуємо токен з змінних середовища
+         BOT_TOKEN = os.environ.get('BOT_TOKEN')
+         if not BOT_TOKEN:
             raise ValueError("❌ BOT_TOKEN не встановлено в змінних середовища")
         
-        application = Application.builder().token(BOT_TOKEN).build()
+         application = Application.builder().token(BOT_TOKEN).build()
         
-        # Додайте ваші обробники тут...
-        # application.add_handler(CommandHandler("start", start))
-        # application.add_handler(MessageHandler(filters.TEXT, handle_message))
+         # Додайте ваші обробники тут...
+         # application.add_handler(CommandHandler("start", start))
+         # application.add_handler(MessageHandler(filters.TEXT, handle_message))
         
-        print("🤖 Бот запускається...")
-        await application.run_polling()
+         print("🤖 Бот запускається...")
+         await application.run_polling()
         
-    except Exception as e:
-        print(f"❌ Помилка в main_async: {e}")
-        logging.exception("Помилка в головній функції")
+     except Exception as e:
+         print(f"❌ Помилка в main_async: {e}")
+         logging.exception("Помилка в головній функції")
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main_async())
-    except KeyboardInterrupt:
-        print("⏹️ Бот зупинений користувачем")
-    except Exception as e:
-        print(f"💥 Непередбачена помилка: {e}")
+ if __name__ == "__main__":
+     try:
+         asyncio.run(main_async())
+     except KeyboardInterrupt:
+         print("⏹️ Бот зупинений користувачем")
+     except Exception as e:
+         print(f"💥 Непередбачена помилка: {e}")
