@@ -1303,5 +1303,18 @@ def main_with_restart():
                 print("❌ Досягнуто максимальну кількість перезапусків")
                 break
 
+async def main_async():
+    """Асинхронна версія main_with_restart"""
+    try:
+        await main_with_restart()
+    except Exception as e:
+        print(f"❌ Помилка в main_async: {e}")
+        logging.exception("Помилка в головній функції")
+
 if __name__ == "__main__":
-    main_with_restart()
+    try:
+        asyncio.run(main_async())
+    except KeyboardInterrupt:
+        print("⏹️ Бот зупинений користувачем")
+    except Exception as e:
+        print(f"💥 Непередбачена помилка: {e}")
