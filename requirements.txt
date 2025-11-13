@@ -1,6 +1,9 @@
-python-telegram-bot==20.7
-pillow==10.2.0
-requests==2.31.0
-playwright==1.40.0
-beautifulsoup4==4.12.2
-aiohttp==3.9.1
+python-telegram-bot
+pillow
+requests
+playwright
+beautifulsoup4
+aiohttp
+certifi
+urllib3
+webdriver-manager
