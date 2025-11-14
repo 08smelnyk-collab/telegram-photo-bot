@@ -1,8 +1,7 @@
-python-telegram-bot==20.7
-pillow==10.3.0
-aiohttp==3.9.1
-selenium==4.15.2
-webdriver-manager==4.0.1
-requests==2.31.0
-certifi==2023.11.17
-flask==2.3.3
+python-telegram-bot
+pillow
+aiohttp
+selenium
+webdriver-manager
+requests
+certifi
