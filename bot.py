@@ -30,6 +30,8 @@ import base64
 import time
 import hashlib
 from functools import wraps
+import threading
+from flask import Flask
 
 # === 🔑 TOKEN ===
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
@@ -61,6 +63,55 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ssl_context = ssl.create_default_context(cafile=certifi.where())
+
+# === 🌐 FLASK SERVER FOR RENDER ===
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return """
+    <html>
+        <head>
+            <title>Telegram Bot Status</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+                .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                .status { color: #22c55e; font-weight: bold; font-size: 24px; }
+                .info { margin: 20px 0; padding: 15px; background: #f0f9ff; border-radius: 5px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🤖 Telegram Bot Status</h1>
+                <div class="status">✅ Bot is running!</div>
+                <div class="info">
+                    <p><strong>🕒 Last update:</strong> {}</p>
+                    <p><strong>📊 Users:</strong> {}</p>
+                    <p><strong>🔧 Service:</strong> Otodom/OLX Photo Downloader</p>
+                </div>
+                <p>Bot is ready to receive links from Telegram!</p>
+            </div>
+        </body>
+    </html>
+    """.format(time.strftime("%Y-%m-%d %H:%M:%S"), len(ALLOWED_USERS))
+
+@app.route('/health')
+def health():
+    return jsonify({"status": "healthy", "timestamp": time.time()})
+
+@app.route('/status')
+def status():
+    return jsonify({
+        "status": "running",
+        "bot": "active", 
+        "users_count": len(ALLOWED_USERS),
+        "timestamp": time.time()
+    })
+
+def run_flask():
+    """Запускає Flask сервер для Render"""
+    print("🚀 Starting Flask server on port 10000...")
+    app.run(host='0.0.0.0', port=10000, debug=False, use_reloader=False)
 
 def check_internet_connection():
     """Перевіряє наявність інтернет-з'єднання"""
@@ -1352,9 +1403,9 @@ def main():
 
 def main_with_restart():
     """Основна функція з автоматичним перезапуском"""
-    max_restarts = 10
+    max_restarts = 100
     restart_count = 0
-    restart_delay = 60  # секунд
+    restart_delay = 30
     
     while restart_count < max_restarts:
         try:
@@ -1366,9 +1417,17 @@ def main_with_restart():
             if restart_count < max_restarts:
                 print(f"🔄 Перезапуск через {restart_delay} секунд...")
                 time.sleep(restart_delay)
+                restart_delay = min(restart_delay * 1.5, 300)
             else:
                 print("❌ Досягнуто максимальну кількість перезапусків")
                 break
 
+# === 🚀 ЗАПУСК СИСТЕМИ ===
 if __name__ == "__main__":
+    # Запускаємо Flask сервер в окремому потоці
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    print("✅ Flask server started on port 10000")
+    
+    # Запускаємо бота
     main_with_restart()
