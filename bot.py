@@ -32,7 +32,9 @@ import hashlib
 import os
 
 # === 🔑 TOKEN ===
-BOT_TOKEN = os.environ.get('BOT_TOKEN') or "8132761969:AAFqXsZbZRPd7gpJaTkyAA_Ep8VJKOMSay0"
+BOT_TOKEN = os.environ.get('BOT_TOKEN')
+if not BOT_TOKEN:
+    raise ValueError("❌ BOT_TOKEN не встановлено в змінних середовища")
 
 # === ⚙️ SETTINGS ===
 PHOTOS_PER_ALBUM = 10
@@ -41,8 +43,7 @@ MIN_WIDTH = 300
 MIN_HEIGHT = 300
 
 # === 🔐 ACCESS CONTROL ===
-# Твій ID (заміни на свій реальний ID)
-ADMIN_ID = 723935749 # ЗАМІНИ ЦЕ НА СВІЙ ID!
+ADMIN_ID = 723935749
 
 # Словник дозволених користувачів {user_id: username}
 ALLOWED_USERS = {
@@ -69,6 +70,34 @@ def check_internet_connection():
     except:
         return False
 
+# === 🛡️ ДЕКОРАТОРИ БЕЗПЕКИ ===
+def admin_required(func):
+    """Декоратор для перевірки прав адміністратора"""
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id
+        username = update.effective_user.username or update.effective_user.first_name
+        
+        logger.info(f"🛡️ Спроба виконання адмін-команди {func.__name__} від {username} (ID: {user_id})")
+        
+        if user_id != ADMIN_ID:
+            logger.warning(f"🚫 НЕСАНКЦІОНОВАНА спроба виконання адмін-команди {func.__name__} від {username} (ID: {user_id})")
+            await update.message.reply_text("❌ Недостатньо прав. Ця команда тільки для адміністратора.")
+            return
+        
+        return await func(update, context)
+    return wrapper
+
+def log_command(func):
+    """Декоратор для логування всіх команд"""
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id
+        username = update.effective_user.username or update.effective_user.first_name
+        command = update.message.text
+        
+        logger.info(f"📝 Команда від {username} (ID: {user_id}): {command}")
+        return await func(update, context)
+    return wrapper
+
 class UserManager:
     """Керування списком дозволених користувачів"""
     
@@ -76,18 +105,43 @@ class UserManager:
     def load_users():
         """Завантажує список користувачів з файлу"""
         global ALLOWED_USERS
+        
+        # 🛡️ БЕЗПЕКА: Завжди починаємо з базового списку (тільки адмін)
+        ALLOWED_USERS = {ADMIN_ID: "admin"}
+        
         try:
             if os.path.exists(USERS_FILE):
                 with open(USERS_FILE, 'r', encoding='utf-8') as f:
                     loaded_users = json.load(f)
                     # Конвертуємо ключі назад в int (JSON зберігає ключі як str)
-                    ALLOWED_USERS = {int(k): v for k, v in loaded_users.items()}
+                    loaded_users = {int(k): v for k, v in loaded_users.items()}
+                    
+                    # 🛡️ БЕЗПЕКА: Перевіряємо, що адмін завжди в списку
+                    if ADMIN_ID not in loaded_users:
+                        loaded_users[ADMIN_ID] = "admin"
+                    
+                    # 🛡️ БЕЗПЕКА: Обмежуємо кількість користувачів
+                    if len(loaded_users) > 50:
+                        logger.warning("⚠️ Занадто багато користувачів, обмежуємо до 50")
+                        # Зберігаємо тільки перших 50 користувачів + адміна
+                        limited_users = {}
+                        count = 0
+                        for uid, uname in loaded_users.items():
+                            if uid == ADMIN_ID or count < 49:
+                                limited_users[uid] = uname
+                                count += 1
+                        loaded_users = limited_users
+                    
+                    ALLOWED_USERS = loaded_users
+                    
                 logger.info(f"✅ Завантажено {len(ALLOWED_USERS)} користувачів")
             else:
-                # Створюємо файл з адміном
+                # Створюємо файл тільки з адміном
                 UserManager.save_users()
         except Exception as e:
             logger.error(f"❌ Помилка завантаження користувачів: {e}")
+            # 🛡️ БЕЗПЕКА: У разі помилки використовуємо тільки адміна
+            ALLOWED_USERS = {ADMIN_ID: "admin"}
     
     @staticmethod
     def save_users():
@@ -104,6 +158,10 @@ class UserManager:
         """Додає користувача до списку дозволених"""
         if user_id in ALLOWED_USERS:
             return False, "Користувач вже має доступ"
+        
+        # 🛡️ БЕЗПЕКА: Обмежуємо максимальну кількість користувачів
+        if len(ALLOWED_USERS) >= 50:
+            return False, "❌ Досягнуто максимальну кількість користувачів (50)"
         
         ALLOWED_USERS[user_id] = username
         UserManager.save_users()
@@ -138,61 +196,61 @@ class FixedGalleryExtractor:
         ]
         
     def setup_driver(self):
-        """Налаштовує Chrome WebDriver (локальна версія)"""
-        chrome_options = Options()
-    
-        # Опції для локального середовища
-        options = Options()
-        options.add_argument('--headless')  # Без графічного інтерфейсу
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        
-        # 🔧 ВИПРАВЛЕННЯ ДЛЯ RENDER:
-        options.binary_location = "/usr/bin/chromium-browser"
-    
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-    
+        """Налаштовує Chrome WebDriver для Render"""
         try:
-            # Спроба з webdriver-manager (автоматичне встановлення)
-            from webdriver_manager.chrome import ChromeDriverManager
-            from selenium.webdriver.chrome.service import Service as ChromeService
-        
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=options)
-            logger.info("✅ ChromeDriver успішно ініціалізовано через WebDriver Manager")
-            return driver
-        
-        except Exception as e:
-            logger.error(f"❌ Помилка з WebDriver Manager: {e}")
-        
-            # Спроба без service (автоматичний пошук)
-        try:
-            driver = webdriver.Chrome(options=chrome_options)
-            logger.info("✅ Chrome успішно ініціалізовано (автоматичний пошук)")
-            return driver
-        except Exception as e2:
-            logger.error(f"❌ Критична помилка: {e2}")
+            options = Options()
+            options.add_argument('--headless')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--remote-debugging-port=9222')
+            options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             
-            # Остання спроба - спрощена версія
+            # 🔧 ВИПРАВЛЕННЯ ДЛЯ RENDER - правильні шляхи:
+            chrome_paths = [
+                "/usr/bin/chromium",           # Основний шлях
+                "/usr/bin/chromium-browser",   # Альтернативний шлях
+                "/usr/bin/google-chrome",      # Chrome
+                "/app/.apt/usr/bin/google-chrome"  # Для деяких хостингів
+            ]
+            
+            for chrome_path in chrome_paths:
+                if os.path.exists(chrome_path):
+                    options.binary_location = chrome_path
+                    logger.info(f"✅ Знайдено Chrome за шляхом: {chrome_path}")
+                    break
+            else:
+                logger.warning("⚠️ Chrome не знайдено, використовую системний")
+            
             try:
-                chrome_options.add_argument("--headless")
-                driver = webdriver.Chrome(options=chrome_options)
+                # Спроба з webdriver-manager
+                service = Service(ChromeDriverManager().install())
+                driver = webdriver.Chrome(service=service, options=options)
+                logger.info("✅ ChromeDriver успішно ініціалізовано через WebDriver Manager")
+                return driver
+            except Exception as e:
+                logger.error(f"❌ Помилка з WebDriver Manager: {e}")
+                
+                # Спроба без service
+                driver = webdriver.Chrome(options=options)
+                logger.info("✅ Chrome успішно ініціалізовано")
+                return driver
+                    
+        except Exception as e:
+            logger.error(f"❌ Критична помилка ініціалізації Chrome: {e}")
+            
+            # Остання спроба - максимально спрощено
+            try:
+                options = Options()
+                options.add_argument('--headless')
+                options.add_argument('--no-sandbox')
+                options.add_argument('--disable-dev-shm-usage')
+                driver = webdriver.Chrome(options=options)
                 logger.info("✅ Chrome успішно ініціалізовано (спрощена версія)")
                 return driver
-            except Exception as e3:
-                logger.critical(f"💥 Всі спроби невдалі: {e3}")
-                logger.info("🔄 Спроба запустити без headless режиму...")
-                
-                try:
-                    # Спроба без headless
-                    chrome_options = Options()
-                    chrome_options.add_argument("--window-size=1920,1080")
-                    driver = webdriver.Chrome(options=chrome_options)
-                    logger.info("✅ Chrome успішно ініціалізовано (без headless)")
-                    return driver
-                except Exception as e4:
-                    logger.critical(f"💥 Не вдалося запустити Chrome: {e4}")
-                    return None
+            except Exception as e2:
+                logger.critical(f"💥 Не вдалося запустити Chrome: {e2}")
+                return None
 
     def remove_watermark(self, image):
         """Видаляє водяний знак (тільки для Otodom)"""
@@ -973,12 +1031,10 @@ async def check_access(update: Update, context: ContextTypes.DEFAULT_TYPE = None
     return False
 
 # === 👑 ADMIN COMMANDS ===
+@admin_required
+@log_command
 async def add_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Додає користувача до списку дозволених (тільки для адміна)"""
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Недостатньо прав. Тільки адміністратор може додавати користувачів.")
-        return
-    
     if not context.args or len(context.args) != 1:
         await update.message.reply_text(
             "ℹ️ Використання: /add_user <user_id>\n\n"
@@ -996,12 +1052,10 @@ async def add_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("❌ Невірний ID. ID має бути числом.")
 
+@admin_required
+@log_command
 async def remove_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Видаляє користувача зі списку дозволених (тільки для адміна)"""
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Недостатньо прав. Тільки адміністратор може видаляти користувачів.")
-        return
-    
     if not context.args or len(context.args) != 1:
         await update.message.reply_text("ℹ️ Використання: /remove_user <user_id>")
         return
@@ -1014,12 +1068,10 @@ async def remove_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("❌ Невірний ID. ID має бути числом.")
 
+@admin_required
+@log_command
 async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показує список дозволених користувачів (тільки для адміна)"""
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Недостатньо прав. Тільки адміністратор може переглядати список користувачів.")
-        return
-    
     if not ALLOWED_USERS:
         await update.message.reply_text("📝 Список користувачів порожній.")
         return
@@ -1031,6 +1083,7 @@ async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users_list += f"\n📊 Всього: {len(ALLOWED_USERS)} користувачів"
     await update.message.reply_text(users_list)
 
+@log_command
 async def my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показує ID користувача"""
     user_id = update.effective_user.id
@@ -1138,6 +1191,7 @@ async def process_and_send_photos(photo_urls, update, session, is_olx=False):
     logger.info(f"🏁 Завершено обробку. Успішно: {success_count} фото")
     return success_count
 
+@log_command
 async def handle_property_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обробляє посилання на оголошення Otodom та OLX"""
     # Перевіряємо доступ
@@ -1184,6 +1238,7 @@ async def handle_property_link(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.error(f"💥 Критична помилка: {e}")
         await processing_msg.edit_text("❌ Помилка. Спробуйте ще раз")
 
+@log_command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /start"""
     # Перевіряємо доступ
@@ -1206,6 +1261,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/my_id - Дізнатися свій ID"
     )
 
+@log_command
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /help"""
     # Перевіряємо доступ
@@ -1251,6 +1307,11 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     try:
+        # 🛡️ БЕЗПЕКА: Видаляємо старий файл користувачів при запуску
+        if os.path.exists(USERS_FILE):
+            os.remove(USERS_FILE)
+            logger.info("🗑️ Видалено старий файл користувачів з міркувань безпеки")
+        
         # Чекаємо на інтернет-з'єднання
         print("🔍 Перевірка інтернет-з'єднання...")
         while not check_internet_connection():
@@ -1259,7 +1320,7 @@ def main():
         
         print("✅ Інтернет-з'єднання активне")
         
-        # Завантажуємо список користувачів
+        # Завантажуємо список користувачів (створить новий файл тільки з адміном)
         UserManager.load_users()
         
         print("🚀 Бот запущений!")
