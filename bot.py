@@ -1330,13 +1330,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Помилка: {context.error}")
 
-def main():
+async def run_bot():
+    """Запуск бота з правильним управлінням event loop"""
     try:
         # Чекаємо на інтернет-з'єднання
         print("🔍 Перевірка інтернет-з'єднання...")
         while not check_internet_connection():
             print("❌ Немає інтернет-з'єднання, очікую 30 секунд...")
-            time.sleep(30)
+            await asyncio.sleep(30)
         
         print("✅ Інтернет-з'єднання активне")
         
@@ -1367,13 +1368,15 @@ def main():
         application.add_error_handler(error_handler)
         
         print("💫 Бот працює...")
-        application.run_polling()
+        
+        # Запускаємо бота з правильним управлінням event loop
+        await application.run_polling()
         
     except Exception as e:
         logger.critical(f"❌ Помилка запуску: {e}")
-        raise  # Передаємо помилку для перезапуску
+        raise
 
-def main_with_restart():
+async def main_with_restart():
     """Основна функція з автоматичним перезапуском"""
     max_restarts = 100
     restart_count = 0
@@ -1382,19 +1385,28 @@ def main_with_restart():
     while restart_count < max_restarts:
         try:
             print(f"🚀 Запуск бота (спроба {restart_count + 1}/{max_restarts})")
-            main()
+            await run_bot()
         except Exception as e:
             print(f"❌ Бот впав: {e}")
             restart_count += 1
             if restart_count < max_restarts:
                 print(f"🔄 Перезапуск через {restart_delay} секунд...")
-                time.sleep(restart_delay)
+                await asyncio.sleep(restart_delay)
                 restart_delay = min(restart_delay * 1.5, 300)
             else:
                 print("❌ Досягнуто максимальну кількість перезапусків")
                 break
 
 # === 🚀 ЗАПУСК СИСТЕМИ ===
+def start_bot():
+    """Запуск бота з правильним event loop"""
+    try:
+        asyncio.run(main_with_restart())
+    except KeyboardInterrupt:
+        print("🛑 Бот зупинено користувачем")
+    except Exception as e:
+        print(f"💥 Критична помилка: {e}")
+
 if __name__ == "__main__":
     # Запускаємо health-check сервер
     health_thread = threading.Thread(target=run_health_server, daemon=True)
@@ -1402,4 +1414,4 @@ if __name__ == "__main__":
     print("✅ Health server started on port 10000")
     
     # Запускаємо бота
-    main_with_restart()
+    start_bot()
