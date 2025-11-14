@@ -5,7 +5,6 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 )
 from telegram import InputMediaPhoto
-from telegram.ext import Application
 from PIL import Image
 import aiohttp
 import ssl
@@ -29,7 +28,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 import base64
 import time
 import hashlib
-import os
+from functools import wraps
 
 # === 🔑 TOKEN ===
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
@@ -73,6 +72,7 @@ def check_internet_connection():
 # === 🛡️ ДЕКОРАТОРИ БЕЗПЕКИ ===
 def admin_required(func):
     """Декоратор для перевірки прав адміністратора"""
+    @wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         username = update.effective_user.username or update.effective_user.first_name
@@ -89,6 +89,7 @@ def admin_required(func):
 
 def log_command(func):
     """Декоратор для логування всіх команд"""
+    @wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         username = update.effective_user.username or update.effective_user.first_name
@@ -295,7 +296,7 @@ class FixedGalleryExtractor:
                             image = Image.open(BytesIO(image_data))
                             if image.mode in ('RGBA', 'P'):
                                 image = image.convert('RGB')
-                            logger.info(f"✅ Успішно завантажено")
+                            logger.info("✅ Успішно завантажено")
                             return image
                         except Exception as e:
                             logger.error(f"❌ Помилка відкриття зображення: {e}")
