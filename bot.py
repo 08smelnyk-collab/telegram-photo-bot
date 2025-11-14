@@ -198,38 +198,57 @@ class FixedGalleryExtractor:
         ]
         
     def setup_driver(self):
-        """Оптимізований драйвер для Render"""
+        """Налаштовує Chrome WebDriver для Render"""
         try:
             options = Options()
             options.add_argument('--headless')
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--disable-extensions')
             options.add_argument('--disable-gpu')
-            options.add_argument('--single-process')  # 🚀 Важливо для швидкості!
             options.add_argument('--remote-debugging-port=9222')
             options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             
-            # 🔧 Використовуємо Chromium на Render
-            options.binary_location = "/usr/bin/chromium-browser"
+            # 🔧 ВИПРАВЛЕННЯ ДЛЯ RENDER - правильні шляхи:
+            chrome_paths = [
+                "/usr/bin/chromium",           # Основний шлях
+                "/usr/bin/chromium-browser",   # Альтернативний шлях
+                "/usr/bin/google-chrome",      # Chrome
+                "/app/.apt/usr/bin/google-chrome"  # Для деяких хостингів
+            ]
             
-            # Спрощений запуск без webdriver-manager
-            driver = webdriver.Chrome(options=options)
-            logger.info("✅ Chrome успішно ініціалізовано (оптимізована версія)")
-            return driver
+            for chrome_path in chrome_paths:
+                if os.path.exists(chrome_path):
+                    options.binary_location = chrome_path
+                    logger.info(f"✅ Знайдено Chrome за шляхом: {chrome_path}")
+                    break
+            else:
+                logger.warning("⚠️ Chrome не знайдено, використовую системний")
+            
+            try:
+                # Спроба з webdriver-manager
+                service = Service(ChromeDriverManager().install())
+                driver = webdriver.Chrome(service=service, options=options)
+                logger.info("✅ ChromeDriver успішно ініціалізовано через WebDriver Manager")
+                return driver
+            except Exception as e:
+                logger.error(f"❌ Помилка з WebDriver Manager: {e}")
+                
+                # Спроба без service
+                driver = webdriver.Chrome(options=options)
+                logger.info("✅ Chrome успішно ініціалізовано")
+                return driver
                     
         except Exception as e:
-            logger.error(f"❌ Помилка ініціалізації Chrome: {e}")
+            logger.error(f"❌ Критична помилка ініціалізації Chrome: {e}")
             
-            # Резервний варіант
+            # Остання спроба - максимально спрощено
             try:
                 options = Options()
                 options.add_argument('--headless')
                 options.add_argument('--no-sandbox')
                 options.add_argument('--disable-dev-shm-usage')
-                options.add_argument('--single-process')  # 🚀 Додаємо і тут
                 driver = webdriver.Chrome(options=options)
-                logger.info("✅ Chrome успішно ініціалізовано (резервна версія)")
+                logger.info("✅ Chrome успішно ініціалізовано (спрощена версія)")
                 return driver
             except Exception as e2:
                 logger.critical(f"💥 Не вдалося запустити Chrome: {e2}")
