@@ -5,7 +5,6 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 )
 from telegram import InputMediaPhoto
-from telegram.ext import Application
 from PIL import Image
 import aiohttp
 import ssl
@@ -50,7 +49,7 @@ ADMIN_ID = 723935749
 
 # Словник дозволених користувачів {user_id: username}
 ALLOWED_USERS = {
-    ADMIN_ID: "admin"  # Ти завжди маєш доступ
+    ADMIN_ID: "admin"
 }
 
 # Файл для збереження списку користувачів
@@ -88,6 +87,10 @@ def run_health_server():
         server.serve_forever()
     except Exception as e:
         logger.error(f"❌ Health server error: {e}")
+
+# Запускаємо health-check сервер в окремому потоці
+health_thread = threading.Thread(target=run_health_server, daemon=True)
+health_thread.start()
 
 # === 🔧 UTILITY FUNCTIONS ===
 def check_internet_connection():
@@ -145,24 +148,19 @@ class UserManager:
         """Завантажує список користувачів з файлу"""
         global ALLOWED_USERS
         
-        # 🛡️ БЕЗПЕКА: Завжди починаємо з базового списку (тільки адмін)
         ALLOWED_USERS = {ADMIN_ID: "admin"}
         
         try:
             if os.path.exists(USERS_FILE):
                 with open(USERS_FILE, 'r', encoding='utf-8') as f:
                     loaded_users = json.load(f)
-                    # Конвертуємо ключі назад в int (JSON зберігає ключі як str)
                     loaded_users = {int(k): v for k, v in loaded_users.items()}
                     
-                    # 🛡️ БЕЗПЕКА: Перевіряємо, що адмін завжди в списку
                     if ADMIN_ID not in loaded_users:
                         loaded_users[ADMIN_ID] = "admin"
                     
-                    # 🛡️ БЕЗПЕКА: Обмежуємо кількість користувачів
                     if len(loaded_users) > 50:
                         logger.warning("⚠️ Занадто багато користувачів, обмежуємо до 50")
-                        # Зберігаємо тільки перших 50 користувачів + адміна
                         limited_users = {}
                         count = 0
                         for uid, uname in loaded_users.items():
@@ -175,11 +173,9 @@ class UserManager:
                     
                 logger.info(f"✅ Завантажено {len(ALLOWED_USERS)} користувачів")
             else:
-                # Створюємо файл тільки з адміном
                 UserManager.save_users()
         except Exception as e:
             logger.error(f"❌ Помилка завантаження користувачів: {e}")
-            # 🛡️ БЕЗПЕКА: У разі помилки використовуємо тільки адміна
             ALLOWED_USERS = {ADMIN_ID: "admin"}
     
     @staticmethod
@@ -198,7 +194,6 @@ class UserManager:
         if user_id in ALLOWED_USERS:
             return False, "Користувач вже має доступ"
         
-        # 🛡️ БЕЗПЕКА: Обмежуємо максимальну кількість користувачів
         if len(ALLOWED_USERS) >= 50:
             return False, "❌ Досягнуто максимальну кількість користувачів (50)"
         
@@ -245,12 +240,11 @@ class FixedGalleryExtractor:
             options.add_argument('--remote-debugging-port=9222')
             options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             
-            # 🔧 ВИПРАВЛЕННЯ ДЛЯ RENDER - правильні шляхи:
             chrome_paths = [
-                "/usr/bin/chromium",           # Основний шлях
-                "/usr/bin/chromium-browser",   # Альтернативний шлях
-                "/usr/bin/google-chrome",      # Chrome
-                "/app/.apt/usr/bin/google-chrome"  # Для деяких хостингів
+                "/usr/bin/chromium",
+                "/usr/bin/chromium-browser",
+                "/usr/bin/google-chrome",
+                "/app/.apt/usr/bin/google-chrome"
             ]
             
             for chrome_path in chrome_paths:
@@ -262,23 +256,18 @@ class FixedGalleryExtractor:
                 logger.warning("⚠️ Chrome не знайдено, використовую системний")
             
             try:
-                # Спроба з webdriver-manager
                 service = Service(ChromeDriverManager().install())
                 driver = webdriver.Chrome(service=service, options=options)
                 logger.info("✅ ChromeDriver успішно ініціалізовано через WebDriver Manager")
                 return driver
             except Exception as e:
                 logger.error(f"❌ Помилка з WebDriver Manager: {e}")
-                
-                # Спроба без service
                 driver = webdriver.Chrome(options=options)
                 logger.info("✅ Chrome успішно ініціалізовано")
                 return driver
                     
         except Exception as e:
             logger.error(f"❌ Критична помилка ініціалізації Chrome: {e}")
-            
-            # Остання спроба - максимально спрощено
             try:
                 options = Options()
                 options.add_argument('--headless')
@@ -464,7 +453,6 @@ class FixedGalleryExtractor:
         try:
             logger.info("🔍 Пошук головного фото OLX для кліку...")
             
-            # Різні селектори для головного фото
             main_image_selectors = [
                 'img[data-testid="photos-image"]',
                 'div[data-testid="main-photo"] img',
@@ -485,22 +473,18 @@ class FixedGalleryExtractor:
                         EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
                     )
                     
-                    # Перевіряємо, чи це дійсно головне фото
                     src = main_image.get_attribute('src') or main_image.get_attribute('data-src')
                     if src and ('apollo.olxcdn.com' in src or 'olx.ua' in src):
                         logger.info(f"✅ Знайдено головне фото: {selector}")
                         logger.info(f"📸 URL фото: {src[:100]}...")
                         
-                        # Спробуємо клікнути через JavaScript
                         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", main_image)
                         time.sleep(1)
                         
-                        # Клікаємо на фото
                         driver.execute_script("arguments[0].click();", main_image)
                         logger.info("🖱️ Клікнув на головне фото через JavaScript")
                         time.sleep(3)
                         
-                        # Перевіряємо, чи відкрилася галерея
                         gallery_selectors = [
                             'div[role="dialog"]',
                             'div[class*="modal"]',
@@ -521,13 +505,10 @@ class FixedGalleryExtractor:
                         return True
                         
                 except TimeoutException:
-                    logger.debug(f"⏰ Таймаут для селектора: {selector}")
                     continue
                 except Exception as e:
-                    logger.debug(f"❌ Помилка з селектором {selector}: {e}")
                     continue
             
-            # Спроба через JavaScript знайти і клікнути на фото
             logger.info("🔄 Спроба знайти фото через JavaScript...")
             click_success = driver.execute_script("""
                 var imageSelectors = [
@@ -541,16 +522,12 @@ class FixedGalleryExtractor:
                 for (var selector of imageSelectors) {
                     var images = document.querySelectorAll(selector);
                     for (var img of images) {
-                        // Перевіряємо, чи фото видиме і достатньо велике
                         var rect = img.getBoundingClientRect();
                         if (rect.width > 300 && rect.height > 200 && 
                             rect.top >= 0 && rect.left >= 0 &&
                             img.offsetParent !== null) {
                             
-                            // Скролимо до фото
                             img.scrollIntoView({behavior: 'smooth', block: 'center'});
-                            
-                            // Клікаємо
                             img.click();
                             console.log('Клікнув на фото з селектором: ' + selector);
                             return true;
@@ -565,19 +542,16 @@ class FixedGalleryExtractor:
                 time.sleep(3)
                 return True
             
-            # Остання спроба - клік по координатах головного фото
             logger.info("🎯 Спроба кліку по координатах...")
             main_images = driver.find_elements(By.CSS_SELECTOR, 'img[src*="apollo.olxcdn.com"], img[data-src*="apollo.olxcdn.com"]')
             for img in main_images:
                 try:
                     if img.is_displayed():
-                        # Отримуємо координати центру фото
                         location = img.location
                         size = img.size
                         x = location['x'] + size['width'] // 2
                         y = location['y'] + size['height'] // 2
                         
-                        # Клікаємо по координатах
                         actions = ActionChains(driver)
                         actions.move_to_element(img).click().perform()
                         logger.info(f"🖱️ Клікнув по координатах: ({x}, {y})")
@@ -596,7 +570,6 @@ class FixedGalleryExtractor:
     def click_olx_next_button(self, driver):
         """Клікає на кнопку 'наступний' в галереї OLX"""
         try:
-            # Різні селектори для кнопки "наступний"
             next_button_selectors = [
                 'button[data-testid="next-btn"]',
                 'button[aria-label*="next"]',
@@ -615,23 +588,19 @@ class FixedGalleryExtractor:
             for selector in next_button_selectors:
                 try:
                     if selector.startswith('//'):
-                        # XPath селектор
                         next_button = WebDriverWait(driver, 2).until(
                             EC.element_to_be_clickable((By.XPATH, selector))
                         )
                     else:
-                        # CSS селектор
                         next_button = WebDriverWait(driver, 2).until(
                             EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
                         )
                     
                     logger.info(f"✅ Знайдено кнопку наступний: {selector}")
                     
-                    # Скролимо до кнопки
                     driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", next_button)
                     time.sleep(0.5)
                     
-                    # Клікаємо через JavaScript
                     driver.execute_script("arguments[0].click();", next_button)
                     logger.info("🖱️ Клікнув на кнопку наступний через JavaScript")
                     return True
@@ -639,7 +608,6 @@ class FixedGalleryExtractor:
                 except TimeoutException:
                     continue
             
-            # Спроба через JavaScript
             logger.info("🔄 Спроба знайти кнопку через JavaScript...")
             next_clicked = driver.execute_script("""
                 var nextSelectors = [
@@ -659,7 +627,6 @@ class FixedGalleryExtractor:
                     }
                 }
                 
-                // Спроба знайти за текстом
                 var nextTexts = ['next', 'następny', '→', '>'];
                 for (var text of nextTexts) {
                     var elements = document.querySelectorAll('button, div, span');
@@ -679,7 +646,6 @@ class FixedGalleryExtractor:
                 logger.info("✅ Клікнув наступний через JavaScript")
                 return True
                 
-            # Спроба кліку правою стрілкою клавіатури
             logger.info("⌨️ Спроба кліку правою стрілкою...")
             actions = ActionChains(driver)
             actions.send_keys(Keys.ARROW_RIGHT).perform()
@@ -696,7 +662,7 @@ class FixedGalleryExtractor:
             logger.info("🔄 Гортання галереї OLX...")
             
             all_photo_urls = set()
-            max_photos = 30  # Максимальна кількість фото для безпеки
+            max_photos = 30
             current_attempt = 0
             consecutive_failures = 0
             
@@ -704,7 +670,6 @@ class FixedGalleryExtractor:
                 current_attempt += 1
                 logger.info(f"📖 Сторінка {current_attempt}")
                 
-                # Збираємо поточне фото
                 current_photos = self.extract_current_olx_gallery_photos(driver)
                 initial_count = len(all_photo_urls)
                 
@@ -715,11 +680,10 @@ class FixedGalleryExtractor:
                 logger.info(f"📸 Нових фото на цій сторінці: {new_photos_count}")
                 
                 if new_photos_count > 0:
-                    consecutive_failures = 0  # Скидаємо лічильник помилок
+                    consecutive_failures = 0
                 else:
                     consecutive_failures += 1
                 
-                # Спроба перейти на наступне фото
                 next_success = self.click_olx_next_button(driver)
                 
                 if not next_success:
@@ -731,7 +695,6 @@ class FixedGalleryExtractor:
                 
                 time.sleep(2)
                 
-                # Якщо не знайдено нових фото кілька разів, зупиняємося
                 if consecutive_failures >= 3:
                     logger.info("🚫 Більше нових фото не знайдено, зупиняюся")
                     break
@@ -749,7 +712,6 @@ class FixedGalleryExtractor:
             photo_urls = driver.execute_script("""
                 var photos = new Set();
                 
-                // Шукаємо активне фото в галереї
                 var activeSelectors = [
                     'div[class*="active"] img',
                     'div[data-testid*="active"] img',
@@ -766,10 +728,8 @@ class FixedGalleryExtractor:
                         var src = element.src || element.dataset.src || element.getAttribute('data-src');
                         
                         if (src && (src.includes('apollo.olxcdn.com') || src.includes('olx.ua'))) {
-                            // Очищаємо URL
                             var cleanUrl = src.replace(/\\\\s/g, '');
                             
-                            // Видаляємо параметри якості
                             if (cleanUrl.includes(';s=')) {
                                 cleanUrl = cleanUrl.split(';s=')[0];
                             }
@@ -777,7 +737,6 @@ class FixedGalleryExtractor:
                                 cleanUrl = cleanUrl.split(';t=')[0];
                             }
                             
-                            // Додаємо параметри для кращої якості
                             if (!cleanUrl.includes('width=')) {
                                 cleanUrl += '?width=1200&quality=80';
                             }
@@ -787,7 +746,6 @@ class FixedGalleryExtractor:
                     }
                 }
                 
-                // Також шукаємо всі фото в галереї
                 var allGallerySelectors = [
                     'div[data-testid="photo-modal"] img',
                     'div[role="dialog"] img',
@@ -838,7 +796,6 @@ class FixedGalleryExtractor:
             all_photos_data = driver.execute_script("""
                 var photosMap = new Map();
                 
-                // Селектори для OLX
                 var olxSelectors = [
                     'img[data-src*="apollo.olxcdn.com"]',
                     'img[src*="apollo.olxcdn.com"]',
@@ -856,10 +813,8 @@ class FixedGalleryExtractor:
                         var src = element.src || element.dataset.src || element.getAttribute('data-src');
                         
                         if (src && (src.includes('apollo.olxcdn.com') || src.includes('olx.ua'))) {
-                            // Отримуємо якісніше зображення
                             var cleanUrl = src.replace(/\\\\s/g, '');
                             
-                            // Видаляємо параметри якості для отримання оригіналу
                             if (cleanUrl.includes(';s=')) {
                                 cleanUrl = cleanUrl.split(';s=')[0];
                             }
@@ -868,7 +823,6 @@ class FixedGalleryExtractor:
                                 cleanUrl = cleanUrl.split(';t=')[0];
                             }
                             
-                            // Додаємо параметри для кращої якості
                             if (!cleanUrl.includes('width=')) {
                                 cleanUrl += '?width=1200&quality=80';
                             }
@@ -988,11 +942,9 @@ class FixedGalleryExtractor:
             time.sleep(5)
             logger.info("✅ Сторінка OLX завантажена")
             
-            # Спочатку спробуємо отримати фото без відкриття галереї
             initial_photos = self.extract_olx_photo_urls(driver)
             logger.info(f"📸 Фото без галереї: {len(initial_photos)}")
             
-            # Спробуємо відкрити галерею і зібрати більше фото
             gallery_opened = self.click_olx_gallery(driver)
             gallery_photos = []
             
@@ -1003,7 +955,6 @@ class FixedGalleryExtractor:
             else:
                 logger.warning("❌ Не вдалося відкрити галерею OLX")
             
-            # Об'єднуємо всі фото
             all_photos = list(set(initial_photos + gallery_photos))
             logger.info(f"🎯 Всього унікальних фото OLX: {len(all_photos)}")
             
@@ -1043,13 +994,11 @@ async def check_access(update: Update, context: ContextTypes.DEFAULT_TYPE = None
     if UserManager.is_user_allowed(user_id):
         return True
     
-    # Якщо немає доступу, відправляємо повідомлення
     await update.message.reply_text(
         "🔒 У вас немає доступу до цього бота.\n\n"
         "Зв'яжіться з адміністратором для отримання доступу."
     )
     
-    # Повідомляємо адміністратора про спробу доступу
     if user_id != ADMIN_ID and context is not None:
         admin_message = (
             f"🚫 Спроба доступу:\n"
@@ -1083,7 +1032,7 @@ async def add_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         new_user_id = int(context.args[0])
-        username = f"user_{new_user_id}"  # Типове ім'я
+        username = f"user_{new_user_id}"
         
         success, message = UserManager.add_user(new_user_id, username)
         await update.message.reply_text(message)
@@ -1154,7 +1103,6 @@ async def process_and_send_photos(photo_urls, update, session, is_olx=False):
     sent_hashes = set()
     sent_photo_ids = set()
     
-    # Групуємо фото
     photo_chunks = [photo_urls[i:i + PHOTOS_PER_ALBUM] for i in range(0, len(photo_urls), PHOTOS_PER_ALBUM)]
     logger.info(f"📚 Створено {len(photo_chunks)} альбомів")
     
@@ -1194,12 +1142,11 @@ async def process_and_send_photos(photo_urls, update, session, is_olx=False):
                 sent_hashes.add(image_hash)
                 sent_photo_ids.add(photo_id)
                 
-                # ⭐⭐ ВАЖЛИВО: Для OLX не обрізаємо водяні знаки ⭐⭐
                 if is_olx:
-                    processed_image = image  # Не обрізаємо для OLX
+                    processed_image = image
                     logger.info("🔵 OLX фото - без обрізки водяних знаків")
                 else:
-                    processed_image = photo_extractor.remove_watermark(image)  # Обрізаємо для Otodom
+                    processed_image = photo_extractor.remove_watermark(image)
                     logger.info("🟢 Otodom фото - з обрізкою водяних знаків")
                 
                 output_bytes = BytesIO()
@@ -1209,7 +1156,7 @@ async def process_and_send_photos(photo_urls, update, session, is_olx=False):
                 media_group.append(
                     InputMediaPhoto(
                         media=output_bytes.getvalue(),
-                        caption=""  # Пустий підпис
+                        caption=""
                     )
                 )
                 
@@ -1238,7 +1185,6 @@ async def process_and_send_photos(photo_urls, update, session, is_olx=False):
 @log_command
 async def handle_property_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обробляє посилання на оголошення Otodom та OLX"""
-    # Перевіряємо доступ
     if not await check_access(update):
         return
     
@@ -1249,7 +1195,6 @@ async def handle_property_link(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         logger.info(f"👤 Користувач надіслав: {url}")
         
-        # Визначаємо тип сайту
         if 'olx.pl' in url:
             photo_urls = await photo_extractor.get_olx_photos(url)
             is_olx = True
@@ -1285,7 +1230,6 @@ async def handle_property_link(update: Update, context: ContextTypes.DEFAULT_TYP
 @log_command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /start"""
-    # Перевіряємо доступ
     if not await check_access(update):
         return
     
@@ -1309,7 +1253,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @log_command
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /help"""
-    # Перевіряємо доступ
     if not await check_access(update):
         return
     
@@ -1331,7 +1274,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обробка текстовых повідомлень"""
-    # Перевіряємо доступ
     if not await check_access(update):
         return
     
@@ -1353,23 +1295,19 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def create_bot_application():
     """Створює та налаштовує бота"""
-    # Завантажуємо список користувачів
     UserManager.load_users()
     
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     
-    # Додаємо обробники команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("my_id", my_id))
     application.add_handler(CommandHandler("status", status))
     
-    # Адмін-команди
     application.add_handler(CommandHandler("add_user", add_user))
     application.add_handler(CommandHandler("remove_user", remove_user))
     application.add_handler(CommandHandler("list_users", list_users))
     
-    # Обробник текстових повідомлень
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_error_handler(error_handler)
     
@@ -1386,10 +1324,7 @@ def run_bot():
             attempt += 1
             logger.info(f"🚀 Спроба запуску бота #{attempt}")
             
-            # Чекаємо інтернет
             wait_for_internet()
-            
-            # Створюємо бота
             application = create_bot_application()
             
             logger.info("💫 Бот запускається...")
@@ -1397,11 +1332,12 @@ def run_bot():
             logger.info(f"📏 Мінімальний розмір: {MIN_WIDTH}x{MIN_HEIGHT}")
             logger.info(f"🔐 Дозволені користувачі: {len(ALLOWED_USERS)}")
             
-            # Запускаємо бота
+            # ВИПРАВЛЕННЯ: Запускаємо бота без вкладених event loop
             application.run_polling(
-                poll_interval=3,
-                timeout=60,
-                drop_pending_updates=True
+                poll_interval=5,
+                timeout=30,
+                drop_pending_updates=True,
+                close_loop=False  # Не закриваємо loop автоматично
             )
             
         except Exception as e:
@@ -1418,9 +1354,6 @@ def run_bot():
 # === 🚀 ЗАПУСК СИСТЕМИ ===
 if __name__ == "__main__":
     try:
-        # Запускаємо health-check сервер
-        health_thread = threading.Thread(target=run_health_server, daemon=True)
-        health_thread.start()
         logger.info("✅ Health server started on port 10000")
         
         # Запускаємо бота
