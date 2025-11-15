@@ -5,6 +5,7 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 )
 from telegram import InputMediaPhoto
+from telegram.ext import Application
 from PIL import Image
 import aiohttp
 import ssl
@@ -31,7 +32,7 @@ import hashlib
 from functools import wraps
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import signal
+import sys
 
 # === 🔑 TOKEN ===
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
@@ -58,7 +59,11 @@ USERS_FILE = "allowed_users.json"
 # === 🧾 LOGGING ===
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('bot.log', encoding='utf-8')
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -73,25 +78,34 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.wfile.write(b'Bot is running!')
     
     def log_message(self, format, *args):
-        pass  # Вимкнути логи
+        logger.info(f"Health check: {self.address_string()} - {format%args}")
 
 def run_health_server():
     """Запускає простий HTTP сервер для Render"""
-    server = HTTPServer(('0.0.0.0', 10000), HealthHandler)
-    print("🚀 Health server started on port 10000")
-    server.serve_forever()
+    try:
+        server = HTTPServer(('0.0.0.0', 10000), HealthHandler)
+        logger.info("🚀 Health server started on port 10000")
+        server.serve_forever()
+    except Exception as e:
+        logger.error(f"❌ Health server error: {e}")
 
-# Запускаємо health-check сервер в окремому потоці
-health_thread = threading.Thread(target=run_health_server, daemon=True)
-health_thread.start()
-
+# === 🔧 UTILITY FUNCTIONS ===
 def check_internet_connection():
     """Перевіряє наявність інтернет-з'єднання"""
     try:
-        requests.get('https://api.telegram.org', timeout=10)
-        return True
-    except:
+        response = requests.get('https://api.telegram.org', timeout=10)
+        return response.status_code == 200
+    except Exception as e:
+        logger.warning(f"❌ No internet connection: {e}")
         return False
+
+def wait_for_internet():
+    """Чекає на інтернет-з'єднання"""
+    logger.info("🔍 Перевірка інтернет-з'єднання...")
+    while not check_internet_connection():
+        logger.warning("❌ Немає інтернет-з'єднання, очікую 30 секунд...")
+        time.sleep(30)
+    logger.info("✅ Інтернет-з'єднання активне")
 
 # === 🛡️ ДЕКОРАТОРИ БЕЗПЕКИ ===
 def admin_required(func):
@@ -1123,6 +1137,11 @@ async def my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(message, parse_mode='HTML')
 
+@log_command
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Перевіряє статус бота"""
+    await update.message.reply_text("✅ Бот працює нормально! 🚀")
+
 # === 🤖 BOT FUNCTIONALITY ===
 async def process_and_send_photos(photo_urls, update, session, is_olx=False):
     """Обробляє та відправляє фото альбомами"""
@@ -1283,7 +1302,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• OLX.pl\n\n"
         "ℹ️ Додаткові команди:\n"
         "/help - Довідка\n"
-        "/my_id - Дізнатися свій ID"
+        "/my_id - Дізнатися свій ID\n"
+        "/status - Статус бота"
     )
 
 @log_command
@@ -1324,85 +1344,89 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "📩 Надішліть посилання на оголошення Otodom або OLX\n\n"
                 "Або використайте команди:\n"
                 "/help - Довідка\n"
-                "/my_id - Дізнатися свій ID"
+                "/my_id - Дізнатися свій ID\n"
+                "/status - Статус бота"
             )
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Помилка: {context.error}")
 
-def main():
-    """Спрощена версія запуску без складного управління event loop"""
-    try:
-        # Чекаємо на інтернет-з'єднання
-        print("🔍 Перевірка інтернет-з'єднання...")
-        while not check_internet_connection():
-            print("❌ Немає інтернет-з'єднання, очікую 30 секунд...")
-            time.sleep(30)
-        
-        print("✅ Інтернет-з'єднання активне")
-        
-        # Завантажуємо список користувачів
-        UserManager.load_users()
-        
-        print("🚀 Бот запущений!")
-        print("📸 Готовий до завантаження фото з Otodom та OLX")
-        print(f"📏 Мінімальний розмір: {MIN_WIDTH}x{MIN_HEIGHT}")
-        print("🔐 Система контролю доступу активована")
-        print(f"👑 Адміністратор: {ADMIN_ID}")
-        print(f"👥 Дозволені користувачі: {len(ALLOWED_USERS)}")
-        
-        application = ApplicationBuilder().token(BOT_TOKEN).build()
-        
-        # Додаємо обробники команд
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("help", help_command))
-        application.add_handler(CommandHandler("my_id", my_id))
-        
-        # Адмін-команди
-        application.add_handler(CommandHandler("add_user", add_user))
-        application.add_handler(CommandHandler("remove_user", remove_user))
-        application.add_handler(CommandHandler("list_users", list_users))
-        
-        # Обробник текстових повідомлень
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-        application.add_error_handler(error_handler)
-        
-        print("💫 Бот працює...")
-        
-        # Простий запуск без складного управління event loop
-        application.run_polling()
-        
-    except Exception as e:
-        logger.critical(f"❌ Помилка запуску: {e}")
-        raise
-
-def main_with_restart():
-    """Основна функція з автоматичним перезапуском"""
-    max_restarts = 100
-    restart_count = 0
-    restart_delay = 30
+def create_bot_application():
+    """Створює та налаштовує бота"""
+    # Завантажуємо список користувачів
+    UserManager.load_users()
     
-    while restart_count < max_restarts:
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    
+    # Додаємо обробники команд
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("my_id", my_id))
+    application.add_handler(CommandHandler("status", status))
+    
+    # Адмін-команди
+    application.add_handler(CommandHandler("add_user", add_user))
+    application.add_handler(CommandHandler("remove_user", remove_user))
+    application.add_handler(CommandHandler("list_users", list_users))
+    
+    # Обробник текстових повідомлень
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    application.add_error_handler(error_handler)
+    
+    return application
+
+def run_bot():
+    """Запускає бота з обробкою помилок"""
+    max_attempts = 10
+    attempt = 0
+    base_delay = 30
+    
+    while attempt < max_attempts:
         try:
-            print(f"🚀 Запуск бота (спроба {restart_count + 1}/{max_restarts})")
-            main()
+            attempt += 1
+            logger.info(f"🚀 Спроба запуску бота #{attempt}")
+            
+            # Чекаємо інтернет
+            wait_for_internet()
+            
+            # Створюємо бота
+            application = create_bot_application()
+            
+            logger.info("💫 Бот запускається...")
+            logger.info(f"📸 Готовий до завантаження фото з Otodom та OLX")
+            logger.info(f"📏 Мінімальний розмір: {MIN_WIDTH}x{MIN_HEIGHT}")
+            logger.info(f"🔐 Дозволені користувачі: {len(ALLOWED_USERS)}")
+            
+            # Запускаємо бота
+            application.run_polling(
+                poll_interval=3,
+                timeout=60,
+                drop_pending_updates=True
+            )
+            
         except Exception as e:
-            print(f"❌ Бот впав: {e}")
-            restart_count += 1
-            if restart_count < max_restarts:
-                print(f"🔄 Перезапуск через {restart_delay} секунд...")
-                time.sleep(restart_delay)
-                restart_delay = min(restart_delay * 1.5, 300)
+            logger.error(f"❌ Помилка запуску бота (спроба {attempt}): {e}")
+            
+            if attempt < max_attempts:
+                delay = base_delay * attempt
+                logger.info(f"🔄 Перезапуск через {delay} секунд...")
+                time.sleep(delay)
             else:
-                print("❌ Досягнуто максимальну кількість перезапусків")
+                logger.critical("💥 Досягнуто максимальну кількість спроб запуску")
                 break
 
 # === 🚀 ЗАПУСК СИСТЕМИ ===
 if __name__ == "__main__":
-    # Запускаємо health-check сервер
-    health_thread = threading.Thread(target=run_health_server, daemon=True)
-    health_thread.start()
-    print("✅ Health server started on port 10000")
-    
-    # Запускаємо бота
-    main_with_restart()
+    try:
+        # Запускаємо health-check сервер
+        health_thread = threading.Thread(target=run_health_server, daemon=True)
+        health_thread.start()
+        logger.info("✅ Health server started on port 10000")
+        
+        # Запускаємо бота
+        run_bot()
+        
+    except KeyboardInterrupt:
+        logger.info("🛑 Бот зупинено користувачем")
+    except Exception as e:
+        logger.critical(f"💥 Критична помилка: {e}")
