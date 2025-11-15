@@ -204,7 +204,7 @@ class UserManager:
     
     @staticmethod
     def remove_user(user_id):
-        """Видаляє користувача зі списку дозволених"""
+        """Видаляє користувача зі спику дозволених"""
         if user_id not in ALLOWED_USERS:
             return False, "Користувача не знайдено"
         
@@ -1313,53 +1313,40 @@ def create_bot_application():
     
     return application
 
-def run_bot():
-    """Запускає бота з обробкою помилок"""
-    max_attempts = 10
-    attempt = 0
-    base_delay = 30
-    
-    while attempt < max_attempts:
-        try:
-            attempt += 1
-            logger.info(f"🚀 Спроба запуску бота #{attempt}")
-            
-            wait_for_internet()
-            application = create_bot_application()
-            
-            logger.info("💫 Бот запускається...")
-            logger.info(f"📸 Готовий до завантаження фото з Otodom та OLX")
-            logger.info(f"📏 Мінімальний розмір: {MIN_WIDTH}x{MIN_HEIGHT}")
-            logger.info(f"🔐 Дозволені користувачі: {len(ALLOWED_USERS)}")
-            
-            # ВИПРАВЛЕННЯ: Запускаємо бота без вкладених event loop
-            application.run_polling(
-                poll_interval=5,
-                timeout=30,
-                drop_pending_updates=True,
-                close_loop=False  # Не закриваємо loop автоматично
-            )
-            
-        except Exception as e:
-            logger.error(f"❌ Помилка запуску бота (спроба {attempt}): {e}")
-            
-            if attempt < max_attempts:
-                delay = base_delay * attempt
-                logger.info(f"🔄 Перезапуск через {delay} секунд...")
-                time.sleep(delay)
-            else:
-                logger.critical("💥 Досягнуто максимальну кількість спроб запуску")
-                break
+def run_bot_once():
+    """Запускає бота один раз без перезапуску"""
+    try:
+        logger.info("🚀 Запуск бота...")
+        
+        wait_for_internet()
+        application = create_bot_application()
+        
+        logger.info("💫 Бот запускається...")
+        logger.info(f"📸 Готовий до завантаження фото з Otodom та OLX")
+        logger.info(f"📏 Мінімальний розмір: {MIN_WIDTH}x{MIN_HEIGHT}")
+        logger.info(f"🔐 Дозволені користувачі: {len(ALLOWED_USERS)}")
+        
+        # Запускаємо бота один раз
+        application.run_polling(
+            poll_interval=3,
+            timeout=30,
+            drop_pending_updates=True
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Помилка запуску бота: {e}")
+        # Не перезапускаємо - просто завершуємо
+        raise
 
 # === 🚀 ЗАПУСК СИСТЕМИ ===
 if __name__ == "__main__":
     try:
         logger.info("✅ Health server started on port 10000")
         
-        # Запускаємо бота
-        run_bot()
+        # Запускаємо бота один раз без перезапуску
+        run_bot_once()
         
     except KeyboardInterrupt:
         logger.info("🛑 Бот зупинено користувачем")
     except Exception as e:
-        logger.critical(f"💥 Критична помилка: {e}")
+        logger.critical(f"💥 Критична помилка. Бот завершено: {e}")
