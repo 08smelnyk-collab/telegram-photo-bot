@@ -24,14 +24,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import TimeoutException
-from webdriver_manager.chrome import ChromeDriverManager
 import base64
 import time
 import hashlib
 from functools import wraps
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import sys
 
 # === 🔑 TOKEN ===
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
@@ -58,39 +54,11 @@ USERS_FILE = "allowed_users.json"
 # === 🧾 LOGGING ===
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('bot.log', encoding='utf-8')
-    ]
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
 ssl_context = ssl.create_default_context(cafile=certifi.where())
-
-# === 🌐 SIMPLE HTTP SERVER FOR RENDER ===
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/plain')
-        self.end_headers()
-        self.wfile.write(b'Bot is running!')
-    
-    def log_message(self, format, *args):
-        logger.info(f"Health check: {self.address_string()} - {format%args}")
-
-def run_health_server():
-    """Запускає простий HTTP сервер для Render"""
-    try:
-        server = HTTPServer(('0.0.0.0', 10000), HealthHandler)
-        logger.info("🚀 Health server started on port 10000")
-        server.serve_forever()
-    except Exception as e:
-        logger.error(f"❌ Health server error: {e}")
-
-# Запускаємо health-check сервер в окремому потоці
-health_thread = threading.Thread(target=run_health_server, daemon=True)
-health_thread.start()
 
 # === 🔧 UTILITY FUNCTIONS ===
 def check_internet_connection():
@@ -230,7 +198,7 @@ class FixedGalleryExtractor:
         ]
         
     def setup_driver(self):
-        """Налаштовує Chrome WebDriver для Render"""
+        """Налаштовує Chrome WebDriver для Railway"""
         try:
             options = Options()
             options.add_argument('--headless')
@@ -238,46 +206,35 @@ class FixedGalleryExtractor:
             options.add_argument('--disable-dev-shm-usage')
             options.add_argument('--disable-gpu')
             options.add_argument('--remote-debugging-port=9222')
+            options.add_argument('--disable-extensions')
+            options.add_argument('--disable-features=VizDisplayCompositor')
+            options.add_argument('--disable-software-rasterizer')
             options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             
-            chrome_paths = [
-                "/usr/bin/chromium",
-                "/usr/bin/chromium-browser",
-                "/usr/bin/google-chrome",
-                "/app/.apt/usr/bin/google-chrome"
-            ]
+            # Для Railway
+            options.binary_location = "/usr/bin/google-chrome-stable"
             
-            for chrome_path in chrome_paths:
-                if os.path.exists(chrome_path):
-                    options.binary_location = chrome_path
-                    logger.info(f"✅ Знайдено Chrome за шляхом: {chrome_path}")
-                    break
-            else:
-                logger.warning("⚠️ Chrome не знайдено, використовую системний")
+            # Використовуємо системний ChromeDriver
+            service = Service(executable_path="/usr/local/bin/chromedriver")
+            driver = webdriver.Chrome(service=service, options=options)
             
-            try:
-                service = Service(ChromeDriverManager().install())
-                driver = webdriver.Chrome(service=service, options=options)
-                logger.info("✅ ChromeDriver успішно ініціалізовано через WebDriver Manager")
-                return driver
-            except Exception as e:
-                logger.error(f"❌ Помилка з WebDriver Manager: {e}")
-                driver = webdriver.Chrome(options=options)
-                logger.info("✅ Chrome успішно ініціалізовано")
-                return driver
-                    
+            logger.info("✅ Chrome успішно ініціалізовано на Railway")
+            return driver
+                
         except Exception as e:
-            logger.error(f"❌ Критична помилка ініціалізації Chrome: {e}")
+            logger.error(f"❌ Критична помилка ініціалізації Chrome на Railway: {e}")
+            
+            # Резервний варіант
             try:
                 options = Options()
                 options.add_argument('--headless')
                 options.add_argument('--no-sandbox')
                 options.add_argument('--disable-dev-shm-usage')
                 driver = webdriver.Chrome(options=options)
-                logger.info("✅ Chrome успішно ініціалізовано (спрощена версія)")
+                logger.info("✅ Chrome успішно ініціалізовано (резервний спосіб)")
                 return driver
             except Exception as e2:
-                logger.critical(f"💥 Не вдалося запустити Chrome: {e2}")
+                logger.critical(f"💥 Не вдалося запустити Chrome на Railway: {e2}")
                 return None
 
     def remove_watermark(self, image):
@@ -1353,7 +1310,7 @@ def run_bot():
 # === 🚀 ЗАПУСК СИСТЕМИ ===
 if __name__ == "__main__":
     try:
-        logger.info("✅ Health server started on port 10000")
+        logger.info("🚄 Запуск бота на Railway...")
         
         # Запускаємо бота з перезапуском
         run_bot()
