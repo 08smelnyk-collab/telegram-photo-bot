@@ -1,6 +1,0 @@
-services:
-  - type: web
-    name: telegram-photo-bot
-    env: docker
-    plan: free
-    dockerfilePath: ./Dockerfile
