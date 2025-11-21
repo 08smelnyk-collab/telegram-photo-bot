@@ -6,7 +6,6 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     curl \
     unzip \
-    ca-certificates \
     && mkdir -p /etc/apt/keyrings \
     && wget -q -O /etc/apt/keyrings/google-chrome.gpg https://dl-ssl.google.com/linux/linux_signing_key.pub \
     && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
