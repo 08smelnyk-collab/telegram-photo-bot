@@ -3,9 +3,9 @@ FROM python:3.11-slim
 # Встановлюємо системні залежності
 RUN apt-get update && apt-get install -y \
     wget \
+    gnupg \
     curl \
     unzip \
-    gnupg \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
