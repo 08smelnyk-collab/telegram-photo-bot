@@ -31,6 +31,26 @@ from functools import wraps
 
 # === 🔑 TOKEN ===
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
+
+# ДІАГНОСТИКА
+print("=== DEBUG BOT_TOKEN ===")
+print(f"BOT_TOKEN exists: {BOT_TOKEN is not None}")
+print(f"BOT_TOKEN type: {type(BOT_TOKEN)}")
+if BOT_TOKEN:
+    print(f"BOT_TOKEN length: {len(BOT_TOKEN)}")
+    print(f"First 15 chars: {BOT_TOKEN[:15]}")
+    print(f"Contains colon: {':' in BOT_TOKEN}")
+    
+    # Перевірка на недруковані символи
+    if any(ord(c) < 32 for c in BOT_TOKEN):
+        print("❌ Знайдено недруковані ASCII символи в токені!")
+        for i, c in enumerate(BOT_TOKEN):
+            if ord(c) < 32:
+                print(f"Позиція {i}: символ {ord(c)}")
+else:
+    print("BOT_TOKEN: None")
+print("======================")
+
 if not BOT_TOKEN:
     raise ValueError("❌ BOT_TOKEN не встановлено в змінних середовища")
 
@@ -206,36 +226,18 @@ class FixedGalleryExtractor:
             options.add_argument('--disable-dev-shm-usage')
             options.add_argument('--disable-gpu')
             options.add_argument('--remote-debugging-port=9222')
-            options.add_argument('--disable-extensions')
-            options.add_argument('--disable-features=VizDisplayCompositor')
-            options.add_argument('--disable-software-rasterizer')
             options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             
             # Для Railway
             options.binary_location = "/usr/bin/google-chrome-stable"
             
-            # Використовуємо системний ChromeDriver
-            service = Service(executable_path="/usr/local/bin/chromedriver")
-            driver = webdriver.Chrome(service=service, options=options)
-            
-            logger.info("✅ Chrome успішно ініціалізовано на Railway")
+            driver = webdriver.Chrome(options=options)
+            logger.info("✅ Chrome успішно ініціалізовано")
             return driver
-                
-        except Exception as e:
-            logger.error(f"❌ Критична помилка ініціалізації Chrome на Railway: {e}")
             
-            # Резервний варіант
-            try:
-                options = Options()
-                options.add_argument('--headless')
-                options.add_argument('--no-sandbox')
-                options.add_argument('--disable-dev-shm-usage')
-                driver = webdriver.Chrome(options=options)
-                logger.info("✅ Chrome успішно ініціалізовано (резервний спосіб)")
-                return driver
-            except Exception as e2:
-                logger.critical(f"💥 Не вдалося запустити Chrome на Railway: {e2}")
-                return None
+        except Exception as e:
+            logger.error(f"❌ Помилка ініціалізації Chrome: {e}")
+            return None
 
     def remove_watermark(self, image):
         """Видаляє водяний знак (тільки для Otodom)"""
